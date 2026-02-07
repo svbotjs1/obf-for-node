@@ -6,14 +6,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CWD = process.cwd();
 
 const files = {
-  // 1. CONFIGURATION
+  // --- 1. METADATA & CI/CD ---
   'package.json': JSON.stringify({
     "name": "obf-for-node",
     "version": "1.0.0",
+    "description": "Professional Node.js Obfuscator",
     "type": "module",
-    "bin": { "obf": "bin/cli.js" },
+    "bin": { "obf-for-node": "bin/cli.js" },
     "exports": "./src/index.js",
-    "engines": { "node": ">=20" },
+    "engines": { "node": ">=18" },
+    "scripts": { 
+      "test": "echo 'No tests'",
+      "prepare": "npm run test"
+    },
+    "keywords": ["obfuscator", "security", "protection", "node"],
+    "author": "User",
+    "license": "MIT",
     "dependencies": {
       "acorn": "^8.11.0",
       "astring": "^1.8.6",
@@ -22,34 +30,88 @@ const files = {
     }
   }, null, 2),
 
-  'README.md': `# Obfuscator\nUsage: \`node bin/cli.js input.js -o out.js\``,
-  
-  'src/config.js': `export const CONFIG = {
-  compact: true,
-  controlFlow: true,
-  deadCode: 0.2,
-  stringArray: true,
-  stringArrayThreshold: 0.8,
-  rotateStringArray: true,
-  antiDebug: true,
-  antiTamper: true,
-  mangle: true,
-  splitStrings: true
-};`,
+  '.github/workflows/publish.yml': `name: Publish Package
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}`,
 
-  // 2. BINARY
+  'README.md': `# obf-for-node
+
+Advanced JavaScript Obfuscator for Node.js applications.
+
+## Installation
+
+\`\`\`bash
+npm install -g obf-for-node
+\`\`\`
+
+## CLI Usage
+
+\`\`\`bash
+obf-for-node -f <input> -o <output> [options]
+\`\`\`
+
+| Option | Description |
+|--------|-------------|
+| \`-f, --file\` | Input file path (Required) |
+| \`-o, --output\` | Output file path (Required) |
+| \`--antidebug\` | Inject anti-debugging loops |
+| \`--antitamper\` | Inject function integrity checks |
+| \`--compact\` | Minify output |
+| \`--str-array\` | Enable String Array encryption |
+| \`--control-flow\` | Enable Control Flow Flattening |
+
+### Example
+
+\`\`\`bash
+obf-for-node -f server.js -o server.obf.js --antidebug --control-flow
+\`\`\`
+
+## API Usage
+
+\`\`\`javascript
+import { obfuscate } from 'obf-for-node';
+
+const code = 'const x = 1;';
+const result = obfuscate(code, {
+    compact: true,
+    antiDebug: true
+});
+\`\`\`
+`,
+
+  // --- 2. CLI ENTRY ---
   'bin/cli.js': `#!/usr/bin/env node
 import { program } from 'commander';
-import { obfuscateFile } from '../src/core/io.js';
+import { processFile } from '../src/core/io.js';
 
 program
-  .argument('<input>')
-  .option('-o, --output <path>')
-  .action(async (inp, opts) => {
+  .requiredOption('-f, --file <path>')
+  .requiredOption('-o, --output <path>')
+  .option('--compact')
+  .option('--antidebug')
+  .option('--antitamper')
+  .option('--str-array')
+  .option('--control-flow')
+  .action(async (opts) => {
     try {
       const start = Date.now();
-      await obfuscateFile(inp, opts.output);
-      console.log(\`Build: \${Date.now() - start}ms\`);
+      await processFile(opts.file, opts.output, opts);
+      console.log(\`Done: \${opts.output} (\${Date.now() - start}ms)\`);
     } catch (e) {
       console.error(e.message);
       process.exit(1);
@@ -57,19 +119,28 @@ program
   });
 program.parse();`,
 
-  // 3. MAIN ENTRY
+  // --- 3. CONFIG & CORE ---
   'src/index.js': `import { Engine } from './core/engine.js';
 export function obfuscate(code, opts) { return new Engine(opts).run(code); }`,
 
-  // 4. CORE ENGINE
+  'src/config.js': `export const DEFAULTS = {
+  compact: true,
+  controlFlow: false,
+  stringArray: false,
+  antiDebug: false,
+  antiTamper: false,
+  mangle: true,
+  deadCode: 0.1
+};`,
+
   'src/core/engine.js': `import * as acorn from 'acorn';
 import { generate } from 'astring';
-import { CONFIG } from '../config.js';
+import { DEFAULTS } from '../config.js';
 import { TransformManager } from '../transforms/manager.js';
 
 export class Engine {
   constructor(opts = {}) {
-    this.opts = { ...CONFIG, ...opts };
+    this.opts = { ...DEFAULTS, ...opts };
     this.manager = new TransformManager(this.opts);
   }
   run(code) {
@@ -84,81 +155,69 @@ export class Engine {
 
   'src/core/io.js': `import fs from 'node:fs/promises';
 import { Engine } from './engine.js';
-export async function obfuscateFile(input, output) {
+
+export async function processFile(input, output, opts) {
   const code = await fs.readFile(input, 'utf-8');
-  const res = new Engine().run(code);
-  if (output) await fs.writeFile(output, res);
-  return res;
+  const result = new Engine(opts).run(code);
+  await fs.writeFile(output, result);
 }`,
 
-  // 5. UTILITIES
+  // --- 4. UTILS ---
   'src/utils/random.js': `export const hex = (str) => str.split('').map(c => '\\\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-export const randName = (len=6) => {
-  const c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_';
-  return '_' + Array.from({length: len}, () => c[Math.floor(Math.random() * c.length)]).join('');
-};
+export const randName = (len=6) => '_' + Math.random().toString(36).substring(2, 2+len);
 export const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
 export const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;`,
 
   'src/utils/ast.js': `export const isStr = (n) => n.type === 'Literal' && typeof n.value === 'string';
-export const createCall = (name, args) => ({
-  type: 'CallExpression',
-  callee: { type: 'Identifier', name },
-  arguments: args
-});`,
+export const block = (body) => ({ type: 'BlockStatement', body });`,
 
-  // 6. TRANSFORM MANAGER
+  // --- 5. TRANSFORMS MANAGER ---
   'src/transforms/manager.js': `import { StringTransformer } from './impl/strings.js';
-import { ControlFlowTransformer } from './impl/controlFlow.js';
-import { DeadCodeTransformer } from './impl/deadCode.js';
-import { AntiDebugTransformer } from './impl/antiDebug.js';
-import { AntiTamperTransformer } from './impl/antiTamper.js';
-import { MangleTransformer } from './impl/mangle.js';
-import { NumberTransformer } from './impl/numbers.js';
+import { ControlFlow } from './impl/controlFlow.js';
+import { DeadCode } from './impl/deadCode.js';
+import { AntiDebug } from './impl/antiDebug.js';
+import { AntiTamper } from './impl/antiTamper.js';
+import { Mangle } from './impl/mangle.js';
 
 export class TransformManager {
   constructor(opts) { this.opts = opts; }
   apply(ast) {
-    if(this.opts.antiTamper) new AntiTamperTransformer().transform(ast);
-    if(this.opts.controlFlow) new ControlFlowTransformer().transform(ast);
-    if(this.opts.deadCode) new DeadCodeTransformer().transform(ast);
-    if(this.opts.stringArray) new StringTransformer(this.opts).transform(ast);
-    new NumberTransformer().transform(ast);
-    if(this.opts.antiDebug) new AntiDebugTransformer().transform(ast);
-    if(this.opts.mangle) new MangleTransformer().transform(ast);
+    if(this.opts.antitamper) new AntiTamper().run(ast);
+    if(this.opts.controlFlow) new ControlFlow().run(ast);
+    if(this.opts.strArray) new StringTransformer().run(ast);
+    new DeadCode().run(ast);
+    if(this.opts.antidebug) new AntiDebug().run(ast);
+    if(this.opts.mangle) new Mangle().run(ast);
   }
 }`,
 
-  // 7. TRANSFORM IMPLEMENTATIONS (The Heavy Lifters)
+  // --- 6. IMPLEMENTATIONS ---
   'src/transforms/impl/strings.js': `import { walk } from 'estree-walker';
 import { hex, randName, randInt } from '../../utils/random.js';
 import { isStr } from '../../utils/ast.js';
 
 export class StringTransformer {
-  constructor(opts) { this.opts = opts; }
-  transform(ast) {
-    const strings = [];
+  run(ast) {
+    const pool = [];
     const map = new Map();
     walk(ast, {
-      enter: (node) => {
-        if (isStr(node) && node.value.length > 2) {
-          if (!map.has(node.value)) {
-            map.set(node.value, strings.length);
-            strings.push(node.value);
+      enter: (n) => {
+        if (isStr(n) && n.value.length > 2) {
+          if (!map.has(n.value)) {
+            map.set(n.value, pool.length);
+            pool.push(n.value);
           }
-          node._idx = map.get(node.value);
-          node._skip = true;
+          n._idx = map.get(n.value);
+          n._skip = true;
         }
       }
     });
-    if (!strings.length) return;
+    if (!pool.length) return;
     
     const arrName = randName(5);
-    const offset = randInt(10, 100);
-    
-    // String Rotation Logic
-    const rotated = [...strings];
-    for(let i=0; i<offset; i++) rotated.push(rotated.shift());
+    const shift = randInt(5, 20);
+    const rotated = [...pool];
+    for(let i=0; i<shift; i++) rotated.push(rotated.shift());
 
     ast.body.unshift({
       type: 'VariableDeclaration', kind: 'const',
@@ -168,10 +227,10 @@ export class StringTransformer {
       }]
     });
 
-    const getter = randName(4);
+    const decName = randName(4);
     ast.body.splice(1, 0, {
       type: 'FunctionDeclaration',
-      id: { type: 'Identifier', name: getter },
+      id: { type: 'Identifier', name: decName },
       params: [{ type: 'Identifier', name: 'i' }],
       body: {
         type: 'BlockStatement',
@@ -180,11 +239,7 @@ export class StringTransformer {
           argument: {
             type: 'MemberExpression',
             object: { type: 'Identifier', name: arrName },
-            property: { 
-              type: 'BinaryExpression', operator: '-', 
-              left: { type: 'Identifier', name: 'i' }, 
-              right: { type: 'Literal', value: offset } 
-            },
+            property: { type: 'BinaryExpression', operator: '-', left: { type: 'Identifier', name: 'i' }, right: { type: 'Literal', value: shift } },
             computed: true
           }
         }]
@@ -192,12 +247,12 @@ export class StringTransformer {
     });
 
     walk(ast, {
-      enter: (node) => {
-        if (node._skip) {
-          node.type = 'CallExpression';
-          node.callee = { type: 'Identifier', name: getter };
-          node.arguments = [{ type: 'Literal', value: node._idx + offset }];
-          delete node.value; delete node.raw;
+      enter: (n) => {
+        if (n._skip) {
+          n.type = 'CallExpression';
+          n.callee = { type: 'Identifier', name: decName };
+          n.arguments = [{ type: 'Literal', value: n._idx + shift }];
+          delete n.value; delete n.raw;
         }
       }
     });
@@ -205,11 +260,11 @@ export class StringTransformer {
 }`,
 
   'src/transforms/impl/controlFlow.js': `import { shuffle, randName } from '../../utils/random.js';
-export class ControlFlowTransformer {
-  transform(ast) {
-    const visit = (node) => {
-      if ((node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression') && node.body.body.length > 3) {
-        const body = node.body.body;
+export class ControlFlow {
+  run(ast) {
+    const visit = (n) => {
+      if ((n.type === 'FunctionDeclaration' || n.type === 'ArrowFunctionExpression') && n.body.body.length > 3) {
+        const body = n.body.body;
         const keys = shuffle(body.map((_, i) => i));
         const sVar = randName(3);
         const cases = keys.map(k => ({
@@ -217,14 +272,14 @@ export class ControlFlowTransformer {
           consequent: [body[k], { type: 'BreakStatement' }]
         }));
         
-        node.body.body = [{
-          type: 'VariableDeclaration', kind: 'var',
+        n.body.body = [{
+          type: 'VariableDeclaration', kind: 'const',
           declarations: [{
-            type: 'VariableDeclarator', id: { type: 'Identifier', name: '_seq' },
+            type: 'VariableDeclarator', id: { type: 'Identifier', name: '_k' },
             init: { type: 'CallExpression', callee: { property: { name: 'split' }, object: { value: keys.join('|'), type: 'Literal' } }, arguments: [{ value: '|', type: 'Literal' }] }
           }]
         }, {
-          type: 'VariableDeclaration', kind: 'var',
+          type: 'VariableDeclaration', kind: 'let',
           declarations: [{ type: 'VariableDeclarator', id: { type: 'Identifier', name: sVar }, init: { value: 0, type: 'Literal' } }]
         }, {
           type: 'WhileStatement', test: { value: true, type: 'Literal' },
@@ -232,7 +287,7 @@ export class ControlFlowTransformer {
             type: 'BlockStatement',
             body: [{
               type: 'SwitchStatement',
-              discriminant: { type: 'UnaryExpression', operator: '+', argument: { type: 'MemberExpression', object: { name: '_seq', type: 'Identifier' }, property: { type: 'UpdateExpression', operator: '++', argument: { name: sVar, type: 'Identifier' } }, computed: true } },
+              discriminant: { type: 'UnaryExpression', operator: '+', argument: { type: 'MemberExpression', object: { name: '_k', type: 'Identifier' }, property: { type: 'UpdateExpression', operator: '++', argument: { name: sVar, type: 'Identifier' } }, computed: true } },
               cases: cases
             }, {
               type: 'IfStatement', test: { type: 'BinaryExpression', operator: '==', left: { name: sVar, type: 'Identifier' }, right: { value: keys.length, type: 'Literal' } },
@@ -241,140 +296,101 @@ export class ControlFlowTransformer {
           }
         }];
       }
-      for(const k in node) if(typeof node[k]==='object'&&node[k]) { if(Array.isArray(node[k])) node[k].forEach(visit); else visit(node[k]); }
+      for(const k in n) if(typeof n[k]==='object'&&n[k]) { if(Array.isArray(n[k])) n[k].forEach(visit); else visit(n[k]); }
     };
     visit(ast);
   }
 }`,
 
   'src/transforms/impl/deadCode.js': `import { randName, randInt } from '../../utils/random.js';
-export class DeadCodeTransformer {
-  transform(ast) {
-    const junk = {
+export class DeadCode {
+  run(ast) {
+    const node = {
       type: 'IfStatement',
-      test: { type: 'BinaryExpression', operator: '===', left: { type: 'Literal', value: randInt(0,100) }, right: { type: 'Literal', value: randInt(101,200) } },
-      consequent: {
-        type: 'BlockStatement',
-        body: [{
-          type: 'ExpressionStatement',
-          expression: { type: 'CallExpression', callee: { type: 'Identifier', name: 'console.log' }, arguments: [{ type: 'Literal', value: randName(50) }] }
-        }]
-      },
+      test: { type: 'BinaryExpression', operator: '===', left: { type: 'Literal', value: randInt(0,50) }, right: { type: 'Literal', value: randInt(51,100) } },
+      consequent: { type: 'BlockStatement', body: [] },
       alternate: null
     };
-    if (ast.body) ast.body.splice(Math.floor(Math.random() * ast.body.length), 0, junk);
+    if (ast.body) ast.body.splice(Math.floor(Math.random() * ast.body.length), 0, node);
   }
 }`,
 
-  'src/transforms/impl/antiDebug.js': `export class AntiDebugTransformer {
-  transform(ast) {
-    const d = {
-      type: 'ExpressionStatement',
-      expression: {
-        type: 'CallExpression',
-        callee: {
-          type: 'FunctionExpression', params: [],
-          body: {
-            type: 'BlockStatement',
-            body: [{
-              type: 'CallExpression',
-              callee: { type: 'Identifier', name: 'setInterval' },
-              arguments: [{
-                type: 'ArrowFunctionExpression', params: [],
-                body: { type: 'BlockStatement', body: [{ type: 'DebuggerStatement' }] }
-              }, { type: 'Literal', value: 4000 }]
-            }]
-          }
-        }, arguments: []
-      }
-    };
-    ast.body.unshift(d);
-  }
-}`,
-
-  'src/transforms/impl/antiTamper.js': `import { randName } from '../../utils/random.js';
-export class AntiTamperTransformer {
-  transform(ast) {
-    const check = {
+  'src/transforms/impl/antiDebug.js': `export class AntiDebug {
+  run(ast) {
+    ast.body.unshift({
       type: 'ExpressionStatement',
       expression: {
         type: 'CallExpression',
         callee: { type: 'FunctionExpression', params: [], body: {
           type: 'BlockStatement',
           body: [{
-            type: 'TryStatement',
-            block: {
-              type: 'BlockStatement',
-              body: [{
-                type: 'IfStatement',
-                test: {
-                  type: 'BinaryExpression', operator: '===',
-                  left: { type: 'CallExpression', callee: { type: 'MemberExpression', object: { type: 'MemberExpression', object: { type: 'Identifier', name: 'Function' }, property: { type: 'Identifier', name: 'prototype' } }, property: { type: 'Identifier', name: 'toString' } }, property: { type: 'Identifier', name: 'call' } }, arguments: [{ type: 'Identifier', name: 'console.log' }] },
-                  right: { type: 'CallExpression', callee: { type: 'MemberExpression', object: { type: 'MemberExpression', object: { type: 'Identifier', name: 'Function' }, property: { type: 'Identifier', name: 'prototype' } }, property: { type: 'Identifier', name: 'toString' } }, property: { type: 'Identifier', name: 'call' } }, arguments: [{ type: 'Identifier', name: 'console.log' }] }
-                },
-                consequent: { type: 'BlockStatement', body: [] },
-                alternate: { type: 'BlockStatement', body: [{ type: 'WhileStatement', test: { type: 'Literal', value: true }, body: { type: 'BlockStatement', body: [] } }] }
-              }]
-            },
-            handler: null, finalizer: null
+            type: 'CallExpression',
+            callee: { type: 'Identifier', name: 'setInterval' },
+            arguments: [{
+              type: 'ArrowFunctionExpression', params: [],
+              body: { type: 'BlockStatement', body: [{ type: 'DebuggerStatement' }] }
+            }, { type: 'Literal', value: 4000 }]
           }]
-        } },
-        arguments: []
+        }}, arguments: []
       }
-    };
-    ast.body.unshift(check);
+    });
+  }
+}`,
+
+  'src/transforms/impl/antiTamper.js': `export class AntiTamper {
+  run(ast) {
+    ast.body.unshift({
+      type: 'ExpressionStatement',
+      expression: {
+        type: 'CallExpression',
+        callee: { type: 'FunctionExpression', params: [], body: {
+          type: 'BlockStatement',
+          body: [{
+            type: 'IfStatement',
+            test: {
+              type: 'BinaryExpression', operator: '!==',
+              left: { type: 'CallExpression', callee: { type: 'MemberExpression', object: { type: 'CallExpression', callee: { type: 'MemberExpression', object: { type: 'Identifier', name: 'console' }, property: { type: 'Identifier', name: 'log' } } }, property: { type: 'Identifier', name: 'toString' } } },
+              right: { type: 'Literal', value: '[object Object]' } 
+            },
+            consequent: { type: 'BlockStatement', body: [] } 
+          }]
+        }}, arguments: []
+      }
+    });
   }
 }`,
 
   'src/transforms/impl/mangle.js': `import { walk } from 'estree-walker';
 import { randName } from '../../utils/random.js';
-export class MangleTransformer {
-  transform(ast) {
+export class Mangle {
+  run(ast) {
     const map = new Map();
-    const reserved = ['require', 'exports', 'module', 'console', 'window', 'global', 'process', 'Buffer'];
+    const reserved = ['require', 'exports', 'module', 'console', 'process', 'global'];
     
     walk(ast, {
-      enter(node) {
-        if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier') {
-          if (!reserved.includes(node.id.name) && !map.has(node.id.name)) map.set(node.id.name, randName(4));
+      enter(n) {
+        if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier') {
+          if (!reserved.includes(n.id.name) && !map.has(n.id.name)) map.set(n.id.name, randName(4));
         }
-        if (node.type === 'FunctionDeclaration' && node.id) {
-          if (!reserved.includes(node.id.name) && !map.has(node.id.name)) map.set(node.id.name, randName(4));
+        if (n.type === 'FunctionDeclaration' && n.id) {
+          if (!reserved.includes(n.id.name) && !map.has(n.id.name)) map.set(n.id.name, randName(4));
         }
       }
     });
     walk(ast, {
-      enter(node) {
-        if (node.type === 'Identifier' && map.has(node.name)) node.name = map.get(node.name);
-      }
-    });
-  }
-}`,
-
-  'src/transforms/impl/numbers.js': `import { walk } from 'estree-walker';
-import { randInt } from '../../utils/random.js';
-export class NumberTransformer {
-  transform(ast) {
-    walk(ast, {
-      enter(node) {
-        if (node.type === 'Literal' && typeof node.value === 'number' && Number.isInteger(node.value) && node.value > 10) {
-          const key = randInt(1, 100);
-          node.type = 'BinaryExpression';
-          node.operator = '^';
-          node.left = { type: 'Literal', value: node.value ^ key };
-          node.right = { type: 'Literal', value: key };
-        }
+      enter(n) {
+        if (n.type === 'Identifier' && map.has(n.name)) n.name = map.get(n.name);
       }
     });
   }
 }`
 };
 
-console.log('Generating obf-for-node...');
+console.log('Generating files...');
 Object.entries(files).forEach(([f, c]) => {
   const p = path.join(CWD, f);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, c);
   console.log(`+ ${f}`);
 });
-console.log('Done. Run: npm install');
+console.log('Done.');
