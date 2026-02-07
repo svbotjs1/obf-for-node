@@ -1,1 +1,0 @@
-import { Base } from './Base.js'; export const Low = { ...Base, compact: true, identifierNamesGenerator: 'mangled' };
