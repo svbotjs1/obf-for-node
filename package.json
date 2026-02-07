@@ -1,20 +1,17 @@
 {
-  "name": "@vxk/obf-node",
-  "version": "1.0.0",
+  "name": "@vxk/down-aio",
+  "version": "1.4.0",
+  "main": "index.js",
   "type": "module",
-  "bin": {
-    "vxk-obf": "bin/cli.js"
-  },
-  "exports": "./src/index.js",
-  "engines": {
-    "node": ">=18"
-  },
+  "files": [
+    "index.js",
+    "_url.js",
+    "_d-aio.js"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "chalk": "^5.3.0",
-    "commander": "^11.1.0",
-    "javascript-obfuscator": "^4.1.0"
+    "axios": "^1.6.0"
   }
 }
