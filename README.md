@@ -1,2 +1,2 @@
-# obf-for-node
-A libary/cli tool obfuscator for javascript developer, support more options, mode, ...
+# Obfuscator
+Usage: `node bin/cli.js input.js -o out.js`
