@@ -1,14 +1,27 @@
 {
   "name": "obf-for-node",
   "version": "1.0.0",
+  "description": "Professional Node.js Obfuscator",
   "type": "module",
   "bin": {
-    "obf": "bin/cli.js"
+    "obf-for-node": "bin/cli.js"
   },
   "exports": "./src/index.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
+  "scripts": {
+    "test": "echo 'No tests'",
+    "prepare": "npm run test"
+  },
+  "keywords": [
+    "obfuscator",
+    "security",
+    "protection",
+    "node"
+  ],
+  "author": "User",
+  "license": "MIT",
   "dependencies": {
     "acorn": "^8.11.0",
     "astring": "^1.8.6",
