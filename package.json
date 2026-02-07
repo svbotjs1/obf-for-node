@@ -1,31 +1,20 @@
 {
-  "name": "obf-for-node",
+  "name": "@vxk/obf-node",
   "version": "1.0.0",
-  "description": "Professional Node.js Obfuscator",
   "type": "module",
   "bin": {
-    "obf-for-node": "bin/cli.js"
+    "vxk-obf": "bin/cli.js"
   },
   "exports": "./src/index.js",
   "engines": {
     "node": ">=18"
   },
-  "scripts": {
-    "test": "echo 'No tests'",
-    "prepare": "npm run test"
+  "publishConfig": {
+    "access": "public"
   },
-  "keywords": [
-    "obfuscator",
-    "security",
-    "protection",
-    "node"
-  ],
-  "author": "User",
-  "license": "MIT",
   "dependencies": {
-    "acorn": "^8.11.0",
-    "astring": "^1.8.6",
+    "chalk": "^5.3.0",
     "commander": "^11.1.0",
-    "estree-walker": "^3.0.3"
+    "javascript-obfuscator": "^4.1.0"
   }
 }

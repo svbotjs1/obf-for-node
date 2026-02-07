@@ -1,0 +1,1 @@
+import { Base } from './Base.js'; export const Medium = { ...Base, compact: true, controlFlowFlattening: true, controlFlowFlatteningThreshold: 0.5, stringArray: true, identifierNamesGenerator: 'hexadecimal' };

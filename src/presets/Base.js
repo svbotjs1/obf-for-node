@@ -1,0 +1,1 @@
+export const Base = { target: 'node', seed: 0, sourceMap: false, renameGlobals: false };
